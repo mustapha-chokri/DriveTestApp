@@ -1,0 +1,6 @@
+{
+  "rnp": "C:/Path/To/Your/RNP_Source.xlsm",
+  "adt": "C:/Path/To/Your/applic_DT.xlsm",
+  "out": "C:/Path/To/Output/Folder",
+  "city": "TANGER"
+}
