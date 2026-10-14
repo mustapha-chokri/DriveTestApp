@@ -69,19 +69,45 @@ class ExcelProcessor:
         self.clear_range(ws_adt_3g)
         self.clear_range(ws_adt_4g)
 
-        # Copy Input Data
+        # Copy Input Data and normalize Site Azimuths (e.g., convert "40/100/270" -> "40;100;270")
         if ws_rnp_input:
             self._log("Copying 'Input Data'...")
+            
+            # Detect column for Site Azimuths
+            azimuth_col = None
+            for col_idx in range(1, ws_rnp_input.max_column + 1):
+                header_val = ws_rnp_input.cell(row=1, column=col_idx).value
+                if header_val and "AZIMUTH" in str(header_val).strip().upper():
+                    azimuth_col = col_idx
+                    break
+
             for i in range(1, ws_rnp_input.max_row + 1):
                 for j in range(1, ws_rnp_input.max_column + 1):
-                    ws_adt_input.cell(row=i + 7, column=j).value = ws_rnp_input.cell(row=i, column=j).value
+                    val = ws_rnp_input.cell(row=i, column=j).value
+                    # Format azimuths on data rows (row >= 2) or wherever slashes are present in azimuth column
+                    if (j == azimuth_col or j == 5) and i >= 2 and val is not None:
+                        val_str = str(val).strip()
+                        if "/" in val_str:
+                            parts = [p.strip() for p in val_str.split("/") if p.strip()]
+                            cleaned_val = ";".join(parts)
+                            self._log(f"Normalized Site Azimuths (row {i}): '{val}' -> '{cleaned_val}'")
+                            val = cleaned_val
+                    ws_adt_input.cell(row=i + 7, column=j).value = val
+
+        # Ensure cell E9 in Input Data is normalized if it still contains slashes
+        e9_val = ws_adt_input['E9'].value
+        if e9_val and "/" in str(e9_val):
+            parts = [p.strip() for p in str(e9_val).split("/") if p.strip()]
+            cleaned_e9 = ";".join(parts)
+            ws_adt_input['E9'].value = cleaned_e9
+            self._log(f"Verified Input Data cell E9: '{e9_val}' -> '{cleaned_e9}'")
 
         # Set target city
         city_formatted = self.city_name.strip().upper()
         ws_adt_input['M2'] = city_formatted
         self._log(f"Target City set to: {city_formatted}")
 
-        # Copy 2G, 3G, 4G sheets
+        # Helper to copy sheet data
         def copy_sheet_data(source_ws, target_ws, start_row_offset=14, max_col_override=None):
             if not source_ws:
                 return
@@ -91,7 +117,33 @@ class ExcelProcessor:
                 for j in range(1, max_col + 1):
                     target_ws.cell(row=i + start_row_offset, column=j).value = source_ws.cell(row=i, column=j).value
 
-        copy_sheet_data(rnp_sheets.get('2G RNP'), ws_adt_2g, max_col_override=12)
+        # 2G RNP: Detect 'BSC' column and skip 'Sector' column if present
+        ws_2g_rnp = rnp_sheets.get('2G RNP')
+        if ws_2g_rnp:
+            self._log("Processing '2G RNP'...")
+            start_col_2g = 1
+            for c in range(1, min(10, ws_2g_rnp.max_column + 1)):
+                cell_val = ws_2g_rnp.cell(row=1, column=c).value
+                if cell_val is not None and str(cell_val).strip().upper() == "BSC":
+                    start_col_2g = c
+                    break
+
+            if start_col_2g > 1:
+                first_col_val = ws_2g_rnp.cell(row=1, column=1).value
+                self._log(
+                    f"Detected '{first_col_val}' in column 1 of '2G RNP'. "
+                    f"Skipping to 'BSC' at column {start_col_2g}."
+                )
+
+            # Copy 12 columns starting from 'BSC' into target ADT '2G' columns 1..12
+            for i in range(1, ws_2g_rnp.max_row + 1):
+                for offset in range(12):
+                    src_c = start_col_2g + offset
+                    tgt_c = 1 + offset
+                    if src_c <= ws_2g_rnp.max_column:
+                        ws_adt_2g.cell(row=i + 14, column=tgt_c).value = ws_2g_rnp.cell(row=i, column=src_c).value
+
+        # 3G RNP and 4G RNP standard transfer
         copy_sheet_data(rnp_sheets.get('3G RNP'), ws_adt_3g)
         copy_sheet_data(rnp_sheets.get('4G RNP'), ws_adt_4g)
 

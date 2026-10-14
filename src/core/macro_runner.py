@@ -46,16 +46,28 @@ class MacroRunner:
             excel_app = win32com.client.Dispatch("Excel.Application")
             excel_app.Visible = False
             excel_app.DisplayAlerts = False
+            excel_app.ScreenUpdating = False
+            excel_app.EnableEvents = False
+            excel_app.Interactive = False
             
             sleep(1)
             abs_path = os.path.abspath(excel_path)
-            self._log(f"Opening workbook in Excel: {abs_path}")
+            self._log(f"Opening workbook in Excel (silent mode): {abs_path}")
             wb = excel_app.Workbooks.Open(abs_path)
+
+            # Ensure stealth mode is preserved
+            excel_app.Visible = False
+            excel_app.ScreenUpdating = False
 
             self._log(f"Running VBA macro: {macro_name}...")
             try:
                 excel_app.Run(macro_name)
-                self._log("VBA macro executed successfully.")
+                # Clear clipboard and selection highlights
+                try:
+                    excel_app.CutCopyMode = False
+                except Exception:
+                    pass
+                self._log("VBA macro executed successfully in background.")
             except Exception as e:
                 self._log(f"Warning during macro execution: {e}", level="WARNING")
 
@@ -89,6 +101,9 @@ class MacroRunner:
                     pass
             if excel_app:
                 try:
+                    excel_app.CutCopyMode = False
+                    excel_app.ScreenUpdating = True
+                    excel_app.Interactive = True
                     excel_app.Quit()
                 except Exception:
                     pass
